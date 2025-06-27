@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sliding Square Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="game-container">
+        <div class="stats-container">
+            <div class="kill-stats">
+                <div class="kill-counter">Kills: <span id="kill-count">0</span></div>
+                <div class="max-kill-counter">Max Kills: <span id="max-kill-count">0</span></div>
+            </div>
+            <div class="health-container">
+                <div class="health-bar">
+                    <div class="health-fill" id="health-fill"></div>
+                </div>
+                <div class="health-text" id="health-text">100</div>
+            </div>
+        </div>
+        <div class="game-area">
+            <div class="background" id="background"></div>
+            <button id="start-button" class="start-button">Start Game</button>
+            <div class="player" id="player"></div>
+            <!-- Enemy will be created dynamically in JavaScript -->
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
