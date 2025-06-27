@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Game state
     const gameState = {
         backgroundX: 0,
+        totalBackgroundDistanceSinceDeath: 0, // Track total distance background has moved
         speed: 2,
         gameRunning: false,
         playerHealth: 100,
@@ -119,13 +120,18 @@ document.addEventListener('DOMContentLoaded', () => {
             gameState.enemyElement.style.display = 'none';
         }
         gameState.enemyPresent = false;
+        gameState.totalBackgroundDistanceSinceDeath = 0; // Reset distance tracking
     }
 
     // Move the background to create illusion of player movement
     function moveBackground() {
         // Only move if speed is greater than 0
         if (gameState.speed > 0) {
+            // Update background position
             gameState.backgroundX -= gameState.speed;
+
+            // Track total distance for particles
+            gameState.totalBackgroundDistanceSinceDeath += gameState.speed;
 
             // Reset background position when it has moved one pattern length
             if (gameState.backgroundX <= -200) {
@@ -207,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Remove bobbing animation during collision
         player.classList.remove('bobbing');
 
-        // If enemy will be defeated, handle immediate defeat without bounce
+        // If enemy will be defeated, handle immediate defeat with dash and crumble effects
         if (willDefeatEnemy) {
             // Increment kill count
             gameState.killCount++;
@@ -220,15 +226,89 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem('maxKillCount', gameState.maxKillCount);
             }
 
-            // Remove enemy immediately - player goes through them
-            removeEnemy();
+            // Create particle effect with 4 smaller squares
+            if (gameState.enemyElement) {
+                // Get enemy position
+                const enemyRect = gameState.enemyElement.getBoundingClientRect();
+                const gameAreaRect = gameArea.getBoundingClientRect();
+
+                // Calculate relative position within game area
+                const enemyLeft = enemyRect.left - gameAreaRect.left;
+                const enemyTop = enemyRect.top - gameAreaRect.top;
+
+                // Remove bobbing from player during dash
+                player.classList.remove('bobbing');
+
+                // Apply dash forward animation to player
+                player.style.animation = 'dashForward 0.3s forwards';
+
+                // Create 4 particles
+                for (let i = 0; i < 4; i++) {
+                    // Create particle element
+                    const particle = document.createElement('div');
+                    particle.className = 'enemy-particle';
+
+                    // Position particle at enemy's position
+                    const particleLeft = enemyLeft + 15 + (i % 2) * 20;
+                    const particleTop = enemyTop + 15 + Math.floor(i / 2) * 20;
+                    particle.style.left = `${particleLeft}px`;
+                    particle.style.top = `${particleTop}px`;
+
+                    // Calculate distance to ground level (bottom of game area - 20px - particle height)
+                    const groundLevel = gameArea.offsetHeight - 20 - 15; // 20px from bottom, 15px particle height
+                    const distanceToGround = groundLevel - particleTop;
+
+                    // Set random horizontal direction for falling
+                    const fallX = (Math.random() * 100 - 50); // -50 to 50px
+                    particle.style.setProperty('--fall-x', `${fallX}px`);
+                    particle.style.setProperty('--fall-y', `${distanceToGround}px`);
+
+                    // Add falling animation with different durations
+                    const fallDuration = 0.5 + Math.random() * 0.3; // 0.5 to 0.8s
+                    particle.style.animation = `fall ${fallDuration}s forwards cubic-bezier(0.4, 0, 1, 1)`;
+
+                    // Add to game area
+                    gameArea.appendChild(particle);
+
+                    // Store particle reference in an array for tracking
+                    if (!gameState.particles) {
+                        gameState.particles = [];
+                    }
+                    gameState.particles.push({
+                        element: particle,
+                        initialLeft: parseFloat(particle.style.left),
+                        fallDuration: fallDuration
+                    });
+
+                    // After fall animation completes, remove the particle
+                    setTimeout(() => {
+                        if (particle.parentNode === gameArea) {
+                            // Remove particle immediately after falling
+                            gameArea.removeChild(particle);
+                        }
+                    }, fallDuration * 1000);
+                }
+
+                // Remove enemy immediately
+                removeEnemy();
+
+                // After dash completes, return player to original position
+                setTimeout(() => {
+                    player.style.animation = 'returnToPosition 0.8s ease-out forwards';
+
+                    // After return animation completes, restore bobbing
+                    setTimeout(() => {
+                        player.style.animation = '';
+                        player.classList.add('bobbing');
+                    }, 800);
+                }, 300);
+            }
 
             // Set waiting for next enemy flag
             gameState.waitingForNextEnemy = true;
 
             // Keep the game running - no pause
             gameState.speed = DEFAULT_GAME_SPEED;
-            player.classList.add('bobbing');
 
             // Spawn a new enemy after a delay (2 seconds)
             setTimeout(() => {
@@ -419,11 +499,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Clean up particles that are no longer needed
+    function cleanupParticles() {
+        if (gameState.particles && gameState.particles.length > 0) {
+            // Filter out particles that are no longer in the DOM
+            gameState.particles = gameState.particles.filter(particle =>
+                particle.element && particle.element.parentNode === gameArea);
+        }
+    }
+
     // Game loop
     function gameLoop() {
         if (gameState.gameRunning) {
             // Move enemy
             moveEnemy();
+
+            // Clean up particles
+            cleanupParticles();
 
             // Check for collision
             checkCollision();
