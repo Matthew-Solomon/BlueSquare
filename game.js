@@ -138,18 +138,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Move the enemy
     function moveEnemy() {
-        if (gameState.enemyPresent && gameState.enemyElement) {
-            // Move enemy based on direction and speed
+        if (gameState.enemyPresent && gameState.enemyElement && gameState.speed > 0) {
+            // Move enemy at exactly the same speed as the background
+            // When background moves left, enemy moves left at same rate
             gameState.enemyX += gameState.speed * gameState.enemyDirection;
 
             // Position enemy
-            if (gameState.enemyDirection < 0) {
-                // Moving left
-                gameState.enemyElement.style.right = `${gameArea.offsetWidth - gameState.enemyX - 50}px`;
-            } else {
-                // Moving right (after bounce)
-                gameState.enemyElement.style.right = `${gameArea.offsetWidth - gameState.enemyX - 50}px`;
-            }
+            gameState.enemyElement.style.right = `${gameArea.offsetWidth - gameState.enemyX - 50}px`;
 
             // Check if enemy is off screen to the left
             if (gameState.enemyX < -50) {
@@ -183,12 +178,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // Store the default game speed
     const DEFAULT_GAME_SPEED = 2;
 
+    // Variables for bouncy physics
+    let bouncingInterval = null;
+    let bounceVelocity = 0;
+    let bouncePhase = 0; // 0: not bouncing, 1: bouncing away, 2: slowing down, 3: returning
+
     // Handle collision between player and enemy
     function handleCollision() {
-        // Set collision cooldown to prevent multiple collisions
-        gameState.collisionCooldown = 30; // 30 frames (about 0.5 seconds at 60fps)
+        // Only proceed if both have health and we're not already in a bounce animation
+        if (gameState.playerHealth <= 0 || gameState.enemyHealth <= 0 || bouncePhase !== 0) {
+            return;
+        }
 
-        // Both take 10 damage
+        // Set collision cooldown to prevent multiple collisions
+        gameState.collisionCooldown = 60; // 60 frames (about 1 second at 60fps)
+
+        // Check if enemy will be defeated by this hit (enemy health <= 10)
+        const willDefeatEnemy = gameState.enemyHealth <= 10;
+
+        // Apply damage only once per collision
         gameState.playerHealth -= 10;
         gameState.enemyHealth -= 10;
 
@@ -199,43 +207,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Remove bobbing animation during collision
         player.classList.remove('bobbing');
 
-        // Bounce enemy in opposite direction
-        gameState.enemyDirection *= -1;
-
-        // Apply a more pronounced bounce effect - move enemy back by about the width of a square
-        if (gameState.enemyDirection > 0) {
-            // If bouncing right, move enemy left by 50px (square width)
-            gameState.enemyX -= 50;
-        } else {
-            // If bouncing left, move enemy right by 50px (square width)
-            gameState.enemyX += 50;
-        }
-
-        // Apply the position change immediately
-        gameState.enemyElement.style.right = `${gameArea.offsetWidth - gameState.enemyX - 50}px`;
-
-        // Add a visual bounce effect to the player (since player is stationary)
-        player.style.transform = 'translateX(-10px)';
-        setTimeout(() => {
-            player.style.transform = 'translateX(0)';
-        }, 150);
-
-        // Stop background scrolling temporarily
-        gameState.speed = 0;
-
-        // Resume background scrolling after a delay
-        setTimeout(() => {
-            // Only resume if game is still running
-            if (gameState.gameRunning) {
-                gameState.speed = DEFAULT_GAME_SPEED;
-
-                // Add bobbing animation back after collision is resolved
-                player.classList.add('bobbing');
-            }
-        }, 500);
-
-        // Check if enemy is defeated
-        if (gameState.enemyHealth <= 0) {
+        // If enemy will be defeated, handle immediate defeat without bounce
+        if (willDefeatEnemy) {
             // Increment kill count
             gameState.killCount++;
             killCountElement.textContent = gameState.killCount;
@@ -247,13 +220,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem('maxKillCount', gameState.maxKillCount);
             }
 
-            // Remove enemy
+            // Remove enemy immediately - player goes through them
             removeEnemy();
 
             // Set waiting for next enemy flag
             gameState.waitingForNextEnemy = true;
 
-            // Make sure the game continues running
+            // Keep the game running - no pause
             gameState.speed = DEFAULT_GAME_SPEED;
             player.classList.add('bobbing');
 
@@ -264,12 +237,111 @@ document.addEventListener('DOMContentLoaded', () => {
                     createEnemy();
                 }
             }, 2000);
+        } else {
+            // Enemy survives - proceed with normal bounce physics
+
+            // Stop background scrolling during combat
+            gameState.speed = 0;
+
+            // Start bounce physics
+            startBounceAnimation();
+
+            // Check if player is defeated
+            if (gameState.playerHealth <= 0) {
+                setTimeout(() => {
+                    gameOver();
+                }, 1000); // Wait for bounce animation to complete
+            }
+        }
+    }
+
+    // Start bounce animation with physics
+    function startBounceAnimation() {
+        // Clear any existing bounce animation
+        if (bouncingInterval) {
+            clearInterval(bouncingInterval);
         }
 
-        // Check if player is defeated
-        if (gameState.playerHealth <= 0) {
-            gameOver();
-        }
+        // Initialize bounce variables
+        bouncePhase = 1; // Start with bouncing away
+        bounceVelocity = 8; // Initial velocity (pixels per frame)
+        let bounceDistance = 0;
+        let maxBounceDistance = 60; // Maximum bounce distance
+
+        // Get initial enemy position
+        const initialEnemyX = gameState.enemyX;
+
+        // Start bounce animation interval
+        bouncingInterval = setInterval(() => {
+            if (!gameState.gameRunning) {
+                clearInterval(bouncingInterval);
+                return;
+            }
+
+            switch (bouncePhase) {
+                case 1: // Bouncing away
+                    // Move enemy away from player
+                    bounceDistance += bounceVelocity;
+                    gameState.enemyX += bounceVelocity;
+
+                    // Slow down as we reach maximum distance
+                    bounceVelocity *= 0.9;
+
+                    // Check if we've reached maximum distance or velocity is too low
+                    if (bounceDistance >= maxBounceDistance || bounceVelocity < 0.5) {
+                        bouncePhase = 2; // Switch to slowing down
+                        bounceVelocity = 0; // Reset velocity
+                    }
+                    break;
+
+                case 2: // Slowing down at maximum distance
+                    bounceVelocity += 0.2; // Gradually increase return velocity
+
+                    if (bounceVelocity >= 2) {
+                        bouncePhase = 3; // Switch to returning
+                    }
+                    break;
+
+                case 3: // Returning for another collision
+                    // Move enemy back toward player
+                    bounceDistance -= bounceVelocity;
+                    gameState.enemyX -= bounceVelocity;
+
+                    // Speed up as we approach the player
+                    bounceVelocity *= 1.05;
+
+                    // Check if we've returned to original position
+                    if (bounceDistance <= 0) {
+                        // Reset enemy position to prevent overlap
+                        gameState.enemyX = initialEnemyX;
+
+                        // End bounce animation
+                        clearInterval(bouncingInterval);
+                        bouncingInterval = null;
+                        bouncePhase = 0;
+
+                        // Resume game if both still have health
+                        if (gameState.playerHealth > 0 && gameState.enemyHealth > 0) {
+                            gameState.speed = DEFAULT_GAME_SPEED;
+                            player.classList.add('bobbing');
+                        }
+                    }
+                    break;
+            }
+
+            // Update enemy position on screen
+            gameState.enemyElement.style.right = `${gameArea.offsetWidth - gameState.enemyX - 50}px`;
+
+            // Update player visual bounce effect
+            if (bouncePhase === 1) {
+                // Player bounces back slightly
+                player.style.transform = `translateX(${-bounceDistance/6}px)`;
+            } else if (bouncePhase === 3) {
+                // Player returns to position
+                player.style.transform = `translateX(${-bounceDistance/6}px)`;
+            }
+
+        }, 16); // ~60fps
     }
 
     // Game over
