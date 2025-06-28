@@ -199,16 +199,21 @@ document.addEventListener('DOMContentLoaded', () => {
         // Set collision cooldown to prevent multiple collisions
         gameState.collisionCooldown = 60; // 60 frames (about 1 second at 60fps)
 
-        // Check if enemy will be defeated by this hit (enemy health <= 10)
-        const willDefeatEnemy = gameState.enemyHealth <= 10;
-
-        // Apply damage only once per collision
-        gameState.playerHealth -= 10;
+        // Process player's attack first
         gameState.enemyHealth -= 10;
 
-        // Update health displays
-        updatePlayerHealth();
+        // Update enemy health display
         updateEnemyHealth();
+
+        // Check if enemy will be defeated by this hit
+        const willDefeatEnemy = gameState.enemyHealth <= 0;
+
+        // Only apply damage to player if enemy survives
+        if (!willDefeatEnemy) {
+            gameState.playerHealth -= 10;
+            // Update player health display
+            updatePlayerHealth();
+        }
 
         // Remove bobbing animation during collision
         player.classList.remove('bobbing');
@@ -428,9 +433,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function gameOver() {
         gameState.gameRunning = false;
 
-        // Show start button
-        startButton.style.display = 'block';
-
         // Remove enemy
         removeEnemy();
 
@@ -440,10 +442,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // Stop background animation
         stopBackgroundAnimation();
 
-        // Alert game over
+        // Apply crumble animation to player
+        player.style.animation = 'playerCrumble 1s forwards';
+
+        // Show try again button after player crumbles
         setTimeout(() => {
-            alert(`Game Over! You defeated ${gameState.killCount} enemies.`);
-        }, 100);
+            document.getElementById('try-again-button').style.display = 'block';
+        }, 1000);
     }
 
     // Start game
@@ -532,6 +537,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Start button click event
     startButton.addEventListener('click', startGame);
+
+    // Try again button click event
+    document.getElementById('try-again-button').addEventListener('click', () => {
+        // Hide try again button
+        document.getElementById('try-again-button').style.display = 'none';
+
+        // Reset player appearance
+        player.style.animation = '';
+        player.style.opacity = '1';
+        player.style.transform = 'scale(1) rotate(0)';
+
+        // Start a new game
+        startGame();
+    });
 
     // Optional: Add keyboard controls to speed up or slow down
     document.addEventListener('keydown', (event) => {
