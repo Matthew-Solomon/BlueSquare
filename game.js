@@ -24,13 +24,62 @@ document.addEventListener('DOMContentLoaded', () => {
         enemyElement: null,
         enemyDirection: -1, // -1 for left, 1 for right (after bounce)
         collisionCooldown: 0,
-        waitingForNextEnemy: false // Flag to track when we're waiting for the next enemy
+        waitingForNextEnemy: false, // Flag to track when we're waiting for the next enemy
+        roundGold: 0, // Gold earned in current round
+        totalGold: 0 // Total gold earned across all rounds
     };
 
-    // Load max kill count from local storage if available
-    if (localStorage.getItem('maxKillCount')) {
-        gameState.maxKillCount = parseInt(localStorage.getItem('maxKillCount'));
+    // Load max kill count and total gold from session storage if available
+    if (sessionStorage.getItem('maxKillCount')) {
+        gameState.maxKillCount = parseInt(sessionStorage.getItem('maxKillCount'));
         maxKillCountElement.textContent = gameState.maxKillCount;
+    }
+
+    if (sessionStorage.getItem('totalGold')) {
+        gameState.totalGold = parseInt(sessionStorage.getItem('totalGold'));
+        document.getElementById('total-gold').textContent = gameState.totalGold;
+    }
+
+    // Create floating damage text
+    function createDamageText(amount, x, y, isPlayer) {
+        const damageText = document.createElement('div');
+        damageText.className = `damage-text ${isPlayer ? 'player-damage' : 'enemy-damage'}`;
+        damageText.textContent = `-${amount}`;
+        damageText.style.left = `${x}px`;
+        damageText.style.top = `${y}px`;
+
+        gameArea.appendChild(damageText);
+
+        // Remove after animation completes
+        setTimeout(() => {
+            if (damageText.parentNode === gameArea) {
+                gameArea.removeChild(damageText);
+            }
+        }, 1000);
+    }
+
+    // Create floating gold text
+    function createGoldText(amount, x, y) {
+        const goldText = document.createElement('div');
+        goldText.className = 'damage-text gold-text';
+        goldText.textContent = `+${amount} Gold`;
+        goldText.style.left = `${x}px`;
+        goldText.style.top = `${y}px`;
+
+        gameArea.appendChild(goldText);
+
+        // Remove after animation completes
+        setTimeout(() => {
+            if (goldText.parentNode === gameArea) {
+                gameArea.removeChild(goldText);
+            }
+        }, 1000);
+    }
+
+    // Update gold displays
+    function updateGoldDisplays() {
+        document.getElementById('round-gold').textContent = gameState.roundGold;
+        document.getElementById('total-gold').textContent = gameState.totalGold;
     }
 
     // Update player health display
@@ -199,8 +248,22 @@ document.addEventListener('DOMContentLoaded', () => {
         // Set collision cooldown to prevent multiple collisions
         gameState.collisionCooldown = 60; // 60 frames (about 1 second at 60fps)
 
+        // Get positions for damage text
+        const playerRect = player.getBoundingClientRect();
+        const enemyRect = gameState.enemyElement.getBoundingClientRect();
+        const gameAreaRect = gameArea.getBoundingClientRect();
+
+        // Calculate relative positions within game area
+        const playerLeft = playerRect.left - gameAreaRect.left;
+        const playerTop = playerRect.top - gameAreaRect.top;
+        const enemyLeft = enemyRect.left - gameAreaRect.left;
+        const enemyTop = enemyRect.top - gameAreaRect.top;
+
         // Process player's attack first
         gameState.enemyHealth -= 10;
+
+        // Show damage text above enemy
+        createDamageText(10, enemyLeft + 25, enemyTop - 10, false);
 
         // Update enemy health display
         updateEnemyHealth();
@@ -211,6 +274,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Only apply damage to player if enemy survives
         if (!willDefeatEnemy) {
             gameState.playerHealth -= 10;
+
+            // Show damage text above player
+            createDamageText(10, playerLeft + 25, playerTop - 10, true);
+
             // Update player health display
             updatePlayerHealth();
         }
@@ -228,8 +295,24 @@ document.addEventListener('DOMContentLoaded', () => {
             if (gameState.killCount > gameState.maxKillCount) {
                 gameState.maxKillCount = gameState.killCount;
                 maxKillCountElement.textContent = gameState.maxKillCount;
-                localStorage.setItem('maxKillCount', gameState.maxKillCount);
+                sessionStorage.setItem('maxKillCount', gameState.maxKillCount);
             }
+
+            // Generate random gold amount (5-15)
+            const goldAmount = Math.floor(Math.random() * 11) + 5;
+
+            // Add gold to round total
+            gameState.roundGold += goldAmount;
+            gameState.totalGold += goldAmount;
+
+            // Update gold displays
+            updateGoldDisplays();
+
+            // Save total gold to sessionStorage
+            sessionStorage.setItem('totalGold', gameState.totalGold);
+
+            // Show gold text
+            createGoldText(goldAmount, enemyLeft + 25, enemyTop - 30);
 
             // Create particle effect with 4 smaller squares
             if (gameState.enemyElement) {
@@ -463,6 +546,7 @@ document.addEventListener('DOMContentLoaded', () => {
         gameState.backgroundX = 0;
         gameState.speed = 2;
         gameState.collisionCooldown = 0;
+        gameState.roundGold = 0; // Reset round gold
 
         // Update displays
         updatePlayerHealth();
